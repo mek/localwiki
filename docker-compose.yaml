@@ -1,0 +1,24 @@
+version: '3.8'
+
+services:
+  wiki:
+    
+    build: .
+    ports:
+      - "${WIKI_HOST_PORT:-8080}:8080"
+    volumes:
+      - wiki_data:/app/data
+    environment:
+      - PORT=8080
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/api/pages"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  wiki_data:
+    name: ${WIKI_VOLUME:-wiki_data}
+    driver: local

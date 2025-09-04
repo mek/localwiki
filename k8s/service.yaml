@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: wiki-service
+  namespace: wiki
+  labels:
+    app: personal-wiki
+spec:
+  type: ClusterIP
+  selector:
+    app: personal-wiki
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http

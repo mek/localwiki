@@ -1,0 +1,22 @@
+# Standard Kubernetes Ingress (alternative to IngressRoute)
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: wiki-ingress
+  namespace: wiki
+  labels:
+    app: personal-wiki
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web
+spec:
+  rules:
+  - host: wiki.rancher.localhost
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: wiki-service
+            port:
+              number: 80

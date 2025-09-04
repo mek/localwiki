@@ -1,0 +1,9 @@
+# Ignore local environment variables
+.env
+
+# backup files
+*~
+*.orig
+
+# data directory
+data/

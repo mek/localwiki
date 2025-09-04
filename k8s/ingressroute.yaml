@@ -1,0 +1,17 @@
+# Traefik IngressRoute for wiki.rancher.localhost
+apiVersion: traefik.containo.us/v1alpha1
+kind: IngressRoute
+metadata:
+  name: wiki-ingressroute
+  namespace: wiki
+  labels:
+    app: personal-wiki
+spec:
+  entryPoints:
+    - web
+  routes:
+  - match: Host(`wiki.rancher.localhost`)
+    kind: Rule
+    services:
+    - name: wiki-service
+      port: 80
