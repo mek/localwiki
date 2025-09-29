@@ -20,12 +20,15 @@ RUN CGO_CFLAGS="-D_LARGEFILE64_SOURCE=1" CGO_ENABLED=1 go build -a -installsuffi
 FROM alpine:latest
 
 # Install runtime dependencies
-RUN apk add --no-cache sqlite ca-certificates tzdata
+RUN apk add --no-cache sqlite ca-certificates tzdata tcl
 
 WORKDIR /app
 
 # Copy the binary from builder stage
 COPY --from=builder /app/wiki .
+
+# dac file
+COPY ./dac /usr/bin/dac
 
 # Copy static files
 COPY static/ ./static/

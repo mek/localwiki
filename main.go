@@ -7,7 +7,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -39,6 +41,160 @@ type WikiServer struct {
 	db *sql.DB // SQLite database connection
 }
 
+// is DacFormat - check if a page is a DAC page
+func isDacFormat(content string) bool {
+	matched, _ := regexp.MatchString(`<<[^>]+>>=`, content)
+	hasTerminator := strings.Contains(content, "\n@")
+	return matched && hasTerminator
+}
+
+// renderDac - shells out to run dac for weaving
+func (s *WikiServer) renderDac(dacSource string) (string, error) {
+
+	// create a temp file for the DAC source
+	tmpfile, err := os.CreateTemp("", "dac-*.dac")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temporary file: %w", err)
+	}
+	defer os.Remove(tmpfile.Name())
+
+	// write the DAC source to the temp file
+	if _, err := tmpfile.Write([]byte(dacSource)); err != nil {
+		return "", fmt.Errorf("failed to write DAC source to temporary file: %w", err)
+	}
+
+	cmd := exec.Command("dac", "-w", tmpfile.Name())
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to run dac: %w", err)
+	}
+
+	return string(out), nil
+}
+
+func (s *WikiServer) handleWeavePage(w http.ResponseWriter, r *http.Request) {
+
+	s.enableCORS(w, r)
+
+	vars := mux.Vars(r)
+	title := vars["title"]
+
+	var content string
+	err := s.db.QueryRow(
+		"SELECT content FROM pages WHERE title = ?",
+		title,
+	).Scan(&content)
+
+	if err == sql.ErrNoRows {
+		s.writeJSONError(w, "Page not found", http.StatusNotFound)
+		return
+	} else if err != nil {
+		s.writeJSONError(w, "Failed to fetch page", http.StatusInternalServerError)
+		return
+	}
+
+	if !isDacFormat(content) {
+		s.writeJSONError(w, "Page is not a DAC page", http.StatusBadRequest)
+		return
+	}
+
+	rendered, err := s.renderDac(content)
+	if err != nil {
+		s.writeJSONError(w, fmt.Sprintf("Failed to weave page %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Write([]byte(rendered))
+
+}
+func (s *WikiServer) tangleChunk(dacSource, chunkName string) (string, error) {
+
+	// create a temp file for the DAC source
+	tmpfile, err := os.CreateTemp("", "dac-*.dac")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temporary file: %w", err)
+	}
+	defer os.Remove(tmpfile.Name())
+
+	// write the DAC source to the temp file
+	if _, err := tmpfile.Write([]byte(dacSource)); err != nil {
+		return "", fmt.Errorf("failed to write DAC source to temporary file: %w", err)
+	}
+
+	cmd := exec.Command("dac", "-t", "-R", chunkName, tmpfile.Name())
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("failed to run dac: %w", err)
+	}
+
+	return string(out), nil
+}
+
+// handleRawPage - returns raw page content
+func (s *WikiServer) handleRawPage(w http.ResponseWriter, r *http.Request) {
+	s.enableCORS(w, r)
+
+	vars := mux.Vars(r)
+	title := vars["title"]
+
+	var page Page
+	err := s.db.QueryRow(
+		"SELECT content FROM pages WHERE title = ?",
+		title,
+	).Scan(&page.Content)
+
+	if err == sql.ErrNoRows {
+		s.writeJSONError(w, "Page not found", http.StatusNotFound)
+		return
+	} else if err != nil {
+		s.writeJSONError(w, "Failed to fetch page", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, page.Content)
+}
+
+// handleTangelChunk - extract a specific check from a DAC page
+func (s *WikiServer) handleTangleChunk(w http.ResponseWriter, r *http.Request) {
+	s.enableCORS(w, r)
+
+	vars := mux.Vars(r)
+	title := vars["title"]
+	chunk := vars["chunk"]
+
+	var content string
+	err := s.db.QueryRow(
+		"SELECT content FROM pages WHERE title = ?",
+		title,
+	).Scan(&content)
+
+	if err == sql.ErrNoRows {
+		s.writeJSONError(w, "Page not found", http.StatusNotFound)
+		return
+	} else if err != nil {
+		s.writeJSONError(w, "Failed to fetch page", http.StatusInternalServerError)
+		return
+	}
+
+	if !isDacFormat(content) {
+		s.writeJSONError(w, "Page is not a DAC page", http.StatusBadRequest)
+		return
+	}
+
+	tangled, err := s.tangleChunk(content, chunk)
+	if err != nil {
+		s.writeJSONError(w, fmt.Sprintf("Failed to tangle chunk %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, tangled)
+}
+
 // validatePageTitle checks if a page title is valid.
 // Returns an error message if invalid, empty string if valid.
 func validatePageTitle(title string) string {
@@ -50,9 +206,9 @@ func validatePageTitle(title string) string {
 		return "Title too long (max 100 characters)"
 	}
 	for _, c := range title {
-		if !(c == ' ' || c == '-' || c == '_' || 
-			(c >= 'A' && c <= 'Z') || 
-			(c >= 'a' && c <= 'z') || 
+		if !(c == ' ' || c == '-' || c == '_' ||
+			(c >= 'A' && c <= 'Z') ||
+			(c >= 'a' && c <= 'z') ||
 			(c >= '0' && c <= '9')) {
 			return "Title contains invalid characters (allowed: letters, numbers, space, dash, underscore)"
 		}
@@ -184,8 +340,19 @@ func (s *WikiServer) getPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	isDac := isDacFormat(page.Content)
+
+	response := map[string]interface{}{
+		"id":         page.ID,
+		"title":      page.Title,
+		"content":    page.Content,
+		"created_at": page.CreatedAt,
+		"updated_at": page.UpdatedAt,
+		"is_dac":     isDac,
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(page)
+	json.NewEncoder(w).Encode(response)
 }
 
 // createPage creates a new wiki page from JSON request body.
@@ -358,6 +525,11 @@ func main() {
 	api.HandleFunc("/pages/{title}", server.updatePage).Methods("PUT")
 	api.HandleFunc("/pages/{title}", server.deletePage).Methods("DELETE")
 
+	// Dac-specific endpoints
+	api.HandleFunc("/pages/{title}/raw", server.handleRawPage).Methods("GET")
+	api.HandleFunc("/pages/{title}/weave", server.handleWeavePage).Methods("GET")
+	api.HandleFunc("/pages/{title}/tangle/{chunk}", server.handleTangleChunk).Methods("GET")
+
 	// Handle preflight requests
 	api.HandleFunc("/pages", server.handleOptions).Methods("OPTIONS")
 	api.HandleFunc("/pages/{title}", server.handleOptions).Methods("OPTIONS")
@@ -371,7 +543,7 @@ func main() {
 		r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 			http.ServeFile(w, r, filepath.Join(staticDir, "index.html"))
 		}).Methods("GET")
-		
+
 		// Serve all other static files
 		r.PathPrefix("/").Handler(http.FileServer(http.Dir(staticDir))).Methods("GET")
 	}

@@ -65,6 +65,37 @@ class WikiAPI {
     searchPages(query) {
         return this.request(`/pages/search?q=${encodeURIComponent(query)}`);
     }
+	  getRaw(title) {
+			return fetch(`${this.base}/pages/${encodeURIComponent(title)}/raw`)
+				.then(response => response.text())
+				.catch(error => {
+					if (error.name === 'NetworkError' || error.message === 'Failed to fetch') {
+						throw new Error('Unable to connect to server. Please check your connection.');
+					}
+					throw error;
+				});
+		}	
+	  getWeave(title) {
+			return fetch(`${this.base}/pages/${encodeURIComponent(title)}/weave`)
+				.then(response => response.text())
+				.catch(error => {
+					if (error.name === 'NetworkError' || error.message === 'Failed to fetch') {
+						throw new Error('Unable to connect to server. Please check your connection.');
+					}
+					throw error;
+				});
+		}
+	  getTangle(title, chunk) {
+			return fetch(`${this.base}/pages/${encodeURIComponent(title)}/tangle/${chunk}`)
+				.then(response => response.text())
+				.catch(error => {
+					if (error.name === 'NetworkError' || error.message === 'Failed to fetch') {
+						throw new Error('Unable to connect to server. Please check your connection.');
+					}
+					throw error;
+				});
+		}
+
 }
 
 export const wikiAPI = new WikiAPI();

@@ -300,25 +300,68 @@ class WikiApp {
         }
     }
 
-    updateView() {
-        let content = this.elements.editor.value;
-        content = this.processFootnotes(content);
-        let html = marked.parse(content);
-        html = this.processWikiLinks(html);
-        this.elements.viewContent.innerHTML = html;
+    	async updateView() {
+        const content = this.elements.editor.value;
+        
+        if (this.currentPage?.is_dac && this.currentPage?.title) {
+            try {
+                const weavedMarkdown = await this.api.getWeave(this.currentPage.title);
+                let html = marked.parse(weavedMarkdown);
+                html = this.processWikiLinks(html);
+                
+                const badge = '<span class="format-badge dac">📝 DAC Format</span>';
+                this.elements.viewContent.innerHTML = badge + html;
+                
+                // Highlight all code blocks
+                this.elements.viewContent.querySelectorAll('pre code').forEach((block) => {
+                    hljs.highlightElement(block);
+                });
+            } catch (error) {
+                console.error('DAC weave failed:', error);
+                this.elements.viewContent.innerHTML = 
+                    `<div class="error">Failed to weave DAC content: ${error.message}</div>`;
+            }
+        } else {
+            let processed = this.processFootnotes(content);
+            let html = marked.parse(processed);
+            html = this.processWikiLinks(html);
+            this.elements.viewContent.innerHTML = html;
+            
+            // Highlight code in regular markdown too
+            this.elements.viewContent.querySelectorAll('pre code').forEach((block) => {
+                hljs.highlightElement(block);
+            });
+        }
     }
-
-    updatePreview() {
+    
+    // Same for updatePreview()
+    async updatePreview() {
         if (!this.isEditMode) return;
         if (this.editDisplayMode === 'editor-only') return;
-
-        let content = this.elements.editor.value;
+    
+        const content = this.elements.editor.value;
+        const isDac = /<<[^>]+>>=/m.test(content) && /^\s*@\s*$/m.test(content);
         
-        content = this.processFootnotes(content);
-        let html = marked.parse(content);
-        html = this.processWikiLinks(html);
-        
-        this.elements.preview.innerHTML = html;
+        if (isDac) {
+            this.elements.preview.innerHTML = 
+                `<div class="dac-preview-notice">
+                    <strong>📝 DAC Format Detected</strong>
+                    <p>Save the page to see the weaved output.</p>
+                </div>
+                <pre><code class="language-plaintext">${this.escapeHtml(content)}</code></pre>`;
+            this.elements.preview.querySelectorAll('pre code').forEach((block) => {
+                hljs.highlightElement(block);
+            });
+        } else {
+            let processed = this.processFootnotes(content);
+            let html = marked.parse(processed);
+            html = this.processWikiLinks(html);
+            this.elements.preview.innerHTML = html;
+            
+            this.elements.preview.querySelectorAll('pre code').forEach((block) => {
+                hljs.highlightElement(block);
+            });
+        }
     }
 
     async savePage(showNotification = true) {
