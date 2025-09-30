@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Personal Wiki</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.2/marked.min.js"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
@@ -13,80 +15,92 @@
     <link rel="stylesheet" href="./style.css">
 </head>
 <body>
-    <div class="container">
-        <div class="sidebar">
-            <div class="sidebar-header">
-                <h2>📚 Wiki</h2>
-                <div class="search-box">
-                    <input type="text" id="searchInput" placeholder="Search pages..." />
-                    <div id="searchResults" class="search-results"></div>
+    <div class="container-fluid mt-3">
+        <div class="row">
+            <div class="col-md-3">
+                <div class="sidebar card">
+            <nav class="navbar navbar-light bg-light">
+                <div class="container-fluid">
+                    <a class="navbar-brand" href="#">📚 Wiki</a>
+                </div>
+            </nav>
+            <div class="card-body">
+                <div class="search-box input-group mb-3">
+                    <input type="text" id="searchInput" class="form-control" placeholder="Search pages..." aria-label="Search pages" />
+                    <button class="btn btn-outline-secondary" type="button">🔍</button>
+                    <div id="searchResults" class="search-results list-group position-absolute w-100 d-none"></div>
                 </div>
             </div>
             
-            <div class="new-page-section">
-                <input type="text" id="newPageName" placeholder="New page title" />
-                <button id="createPageBtn" class="btn btn-primary">Create</button>
+            <div class="new-page-section card-body border-top">
+                <div class="input-group mb-3">
+                    <input type="text" id="newPageName" class="form-control" placeholder="New page title" aria-label="New page title" />
+                    <button id="createPageBtn" class="btn btn-primary" type="button">Create</button>
+                </div>
             </div>
 
-            <div class="page-list-container">
-                <h3>Pages</h3>
-                <ul class="page-list" id="pageList">
-                    <li class="loading">Loading pages...</li>
+            <div class="page-list-container card-body">
+                <h3 class="card-title">Pages</h3>
+                <ul class="list-group list-group-flush" id="pageList">
+                    <li class="loading list-group-item">Loading pages...</li>
                 </ul>
             </div>
         </div>
-
-        <div class="main-content">
+            </div>
+            <div class="col-md-9">
+                <div class="main-content card">
             <!-- View Mode -->
             <div id="viewMode" class="mode-container">
-                <div class="header">
-                    <div class="title-section">
-                        <h1 id="viewPageTitle">Loading...</h1>
-                        <div class="page-meta" id="viewPageMeta"></div>
+                <div class="article-container">
+                    <div class="article-header">
+                        <h1 id="viewPageTitle" class="article-title">Loading...</h1>
+                        <div class="page-meta text-muted" id="viewPageMeta"></div>
+                        <div class="article-actions">
+                            <button id="editBtn" class="btn btn-primary" title="Edit page (Ctrl/Cmd+E)">✏️ Edit</button>
+                            <button id="deleteBtn" class="btn btn-danger" style="display: none;" title="Delete page">Delete</button>
+                            <button id="helpBtn" class="btn btn-info" title="Keyboard shortcuts">?</button>
+                        </div>
                     </div>
-                    <div class="toolbar">
-                        <button id="editBtn" class="btn btn-primary" title="Edit page (Ctrl/Cmd+E)">✏️ Edit</button>
-                        <button id="deleteBtn" class="btn btn-danger" style="display: none;" title="Delete page">Delete</button>
-                        <button id="helpBtn" class="btn btn-secondary" title="Keyboard shortcuts">?</button>
+                    <div class="article-content">
+                        <div id="viewContent" class="view-content">Loading...</div>
                     </div>
-                </div>
-                <div class="content-area">
-                    <div id="viewContent" class="view-content">Loading...</div>
                 </div>
             </div>
 
             <!-- Edit Mode -->
-            <div id="editMode" class="mode-container" style="display: none;">
-                <div class="header">
-                    <div class="title-section">
-                        <h1 id="editPageTitle">Editing...</h1>
-                        <div class="page-meta" id="editPageMeta"></div>
-                    </div>
-                    <div class="toolbar">
-                        <div class="edit-mode-buttons">
-                            <button id="editorOnlyBtn" class="btn btn-secondary active">Editor</button>
-                            <button id="previewOnlyBtn" class="btn btn-secondary">Preview</button>
-                            <button id="splitViewBtn" class="btn btn-secondary">Split</button>
+            <div id="editMode" class="edit-mode-container" style="display: none;">
+                <div class="edit-header">
+                    <div class="edit-header-content">
+                        <div class="title-section">
+                            <h1 id="editPageTitle" class="edit-title">Editing...</h1>
+                            <div class="page-meta text-muted" id="editPageMeta"></div>
                         </div>
-                        <div class="edit-actions">
-                            <button id="saveBtn" class="btn btn-primary">Save</button>
-                            <button id="cancelBtn" class="btn btn-secondary">Cancel</button>
+                        <div class="toolbar">
+                            <div class="edit-mode-buttons btn-group me-3" role="group">
+                                <button id="editorOnlyBtn" class="btn btn-outline-secondary active">Editor</button>
+                                <button id="previewOnlyBtn" class="btn btn-outline-secondary">Preview</button>
+                                <button id="splitViewBtn" class="btn btn-outline-secondary">Split</button>
+                            </div>
+                            <div class="edit-actions btn-group" role="group">
+                                <button id="saveBtn" class="btn btn-success">Save</button>
+                                <button id="cancelBtn" class="btn btn-secondary">Cancel</button>
+                            </div>
                         </div>
                     </div>
                 </div>
-                <div class="content-area" id="editContentArea">
+                <div class="edit-content-area" id="editContentArea">
                     <!-- Editor Panel -->
                     <div id="editorPanel" class="editor-panel">
                         <div class="panel-header">
                             <span class="panel-title">✏️ Editor</span>
-                            <div class="editor-tools">
-                                <button class="tool-btn" title="Bold" onclick="insertMarkdown('**', '**')">B</button>
-                                <button class="tool-btn" title="Italic" onclick="insertMarkdown('*', '*')">I</button>
-                                <button class="tool-btn" title="Code" onclick="insertMarkdown('`', '`')">C</button>
-                                <button class="tool-btn" title="Wiki Link" onclick="insertWikiLink()">[[]]</button>
+                            <div class="editor-tools btn-group" role="group">
+                                <button class="tool-btn btn btn-sm btn-outline-secondary" title="Bold" onclick="insertMarkdown('**', '**')">B</button>
+                                <button class="tool-btn btn btn-sm btn-outline-secondary" title="Italic" onclick="insertMarkdown('*', '*')">I</button>
+                                <button class="tool-btn btn btn-sm btn-outline-secondary" title="Code" onclick="insertMarkdown('`', '`')">C</button>
+                                <button class="tool-btn btn btn-sm btn-outline-secondary" title="Wiki Link" onclick="insertWikiLink()">[[]]</button>
                             </div>
                         </div>
-                        <textarea id="editor" placeholder="Start writing your markdown..."></textarea>
+                        <textarea id="editor" class="form-control editor-textarea" placeholder="Start writing your markdown..."></textarea>
                     </div>
 
                     <!-- Preview Panel -->
@@ -98,21 +112,31 @@
                     </div>
                 </div>
             </div>
-        </div>
     </div>
 
     <!-- Modal for confirmations -->
-    <div id="modal" class="modal">
-        <div class="modal-content">
-            <h3 id="modalTitle">Confirm Action</h3>
-            <p id="modalMessage">Are you sure?</p>
-            <div class="modal-buttons">
-                <button id="modalCancel" class="btn btn-secondary">Cancel</button>
-                <button id="modalConfirm" class="btn btn-danger">Confirm</button>
+    <div class="modal fade" id="modal" tabindex="-1" aria-labelledby="modalTitle" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalTitle">Confirm Action</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <p id="modalMessage">Are you sure?</p>
+                </div>
+                <div class="modal-footer">
+                    <button id="modalCancel" type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button id="modalConfirm" type="button" class="btn btn-danger">Confirm</button>
+                </div>
             </div>
         </div>
     </div>
 
+    <div id="statusMessageContainer"></div>
+
     <script type="module" src="./app.js"></script>
+    <!-- Bootstrap JS Bundle -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
 </body>
 </html>

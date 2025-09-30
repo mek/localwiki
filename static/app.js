@@ -89,7 +89,8 @@ class WikiApp {
             modalTitle: document.getElementById('modalTitle'),
             modalMessage: document.getElementById('modalMessage'),
             modalConfirm: document.getElementById('modalConfirm'),
-            modalCancel: document.getElementById('modalCancel')
+            modalCancel: document.getElementById('modalCancel'),
+            statusMessageContainer: document.getElementById('statusMessageContainer')
         };
     }
 
@@ -129,10 +130,6 @@ class WikiApp {
                 this.hideSearchResults();
             }
         });
-
-        // Modal events
-        this.elements.modalCancel.addEventListener('click', () => this.hideModal());
-        this.elements.modalConfirm.addEventListener('click', () => this.handleModalConfirm());
 
         // Keyboard shortcuts
         document.addEventListener('keydown', (e) => {
@@ -181,11 +178,14 @@ class WikiApp {
             .sort((a, b) => a.title.localeCompare(b.title))
             .forEach(page => {
                 const li = document.createElement('li');
+                li.className = 'list-group-item';
                 const a = document.createElement('a');
                 a.href = '#';
+                a.className = 'list-group-item-action';
                 a.textContent = page.title;
                 if (page.title === this.currentPage?.title) {
                     a.classList.add('active');
+                    a.setAttribute('aria-current', 'true');
                 }
                 li.appendChild(a);
                 this.elements.pageList.appendChild(li);
@@ -247,7 +247,7 @@ class WikiApp {
 
     showViewMode() {
         this.isEditMode = false;
-        this.elements.viewMode.style.display = 'flex';
+        this.elements.viewMode.style.display = 'block';
         this.elements.editMode.style.display = 'none';
         this.markSaved();
     }
@@ -256,7 +256,7 @@ class WikiApp {
         this.isEditMode = true;
         this.originalContent = this.elements.editor.value;
         this.elements.viewMode.style.display = 'none';
-        this.elements.editMode.style.display = 'flex';
+        this.elements.editMode.style.display = 'block';
         this.setEditDisplayMode(this.editDisplayMode);
         this.markSaved();
     }
@@ -283,15 +283,29 @@ class WikiApp {
 
     setEditDisplayMode(mode) {
         this.editDisplayMode = mode;
-        
+
         // Update button states
         this.elements.editorOnlyBtn.classList.toggle('active', mode === 'editor-only');
         this.elements.previewOnlyBtn.classList.toggle('active', mode === 'preview-only');
         this.elements.splitViewBtn.classList.toggle('active', mode === 'split-view');
-        
-        // Update content area class - CSS handles all positioning
-        this.elements.editContentArea.className = mode;
-        
+
+        // Update content area class
+        this.elements.editContentArea.classList.remove('editor-only', 'preview-only', 'split-view');
+
+        if (mode === 'editor-only') {
+            this.elements.editContentArea.classList.add('editor-only');
+            this.elements.editorPanel.style.display = 'flex';
+            this.elements.previewPanel.style.display = 'none';
+        } else if (mode === 'preview-only') {
+            this.elements.editContentArea.classList.add('preview-only');
+            this.elements.editorPanel.style.display = 'none';
+            this.elements.previewPanel.style.display = 'flex';
+        } else if (mode === 'split-view') {
+            this.elements.editContentArea.classList.add('split-view');
+            this.elements.editorPanel.style.display = 'flex';
+            this.elements.previewPanel.style.display = 'flex';
+        }
+
         // Update preview if needed
         if (mode === 'preview-only' || mode === 'split-view') {
             setTimeout(() => {
@@ -432,15 +446,18 @@ class WikiApp {
         } catch (error) {
             this.ui.showStatus(`Error deleting page: ${error.message}`, 'error');
         }
-        this.hideModal();
     }
 
     showModal() {
-        this.elements.modal.classList.add('visible');
+        const modal = new bootstrap.Modal(this.elements.modal);
+        modal.show();
     }
 
     hideModal() {
-        this.elements.modal.classList.remove('visible');
+        const modal = bootstrap.Modal.getInstance(this.elements.modal);
+        if (modal) {
+            modal.hide();
+        }
     }
 
     async handleSearch(query) {
@@ -467,25 +484,28 @@ class WikiApp {
             
             if (results.length === 0) {
                 const div = document.createElement('div');
-                div.className = 'search-result';
+                div.className = 'list-group-item text-muted';
                 div.textContent = 'No results found';
                 this.elements.searchResults.appendChild(div);
             } else {
                 // Create elements safely without innerHTML for onclick handlers
                 results.forEach(page => {
-                    const div = document.createElement('div');
-                    div.className = 'search-result';
-                    div.textContent = page.title;
-                    div.addEventListener('click', () => this.loadPage(page.title));
-                    this.elements.searchResults.appendChild(div);
+                    const a = document.createElement('a');
+                    a.href = '#';
+                    a.className = 'list-group-item list-group-item-action';
+                    a.textContent = page.title;
+                    a.addEventListener('click', () => this.loadPage(page.title));
+                    this.elements.searchResults.appendChild(a);
                 });
             }
         }
-        this.elements.searchResults.classList.add('visible');
+        this.elements.searchResults.classList.remove('d-none');
+        this.elements.searchResults.classList.add('d-block');
     }
 
     hideSearchResults() {
-        this.elements.searchResults.classList.remove('visible');
+        this.elements.searchResults.classList.remove('d-block');
+        this.elements.searchResults.classList.add('d-none');
     }
 
     processWikiLinks(text) {
@@ -538,12 +558,16 @@ class WikiApp {
         this.unsavedChanges = true;
         if (!this.elements.saveBtn.textContent.includes('*')) {
             this.elements.saveBtn.textContent = 'Save *';
+            this.elements.saveBtn.classList.remove('btn-success');
+            this.elements.saveBtn.classList.add('btn-warning');
         }
     }
 
     markSaved() {
         this.unsavedChanges = false;
         this.elements.saveBtn.textContent = 'Save';
+        this.elements.saveBtn.classList.remove('btn-warning');
+        this.elements.saveBtn.classList.add('btn-success');
     }
 
     // Status messages are now handled by WikiUI
@@ -552,6 +576,35 @@ class WikiApp {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    showStatus(message, type = 'success') {
+        const alertPlaceholder = document.getElementById('statusMessageContainer');
+        if (!alertPlaceholder) {
+            const body = document.querySelector('body');
+            const div = document.createElement('div');
+            div.id = 'statusMessageContainer';
+            div.style.position = 'fixed';
+            div.style.top = '20px';
+            div.style.right = '20px';
+            div.style.zIndex = '1050';
+            body.appendChild(div);
+            alertPlaceholder = div;
+        }
+
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = [
+            `<div class="alert alert-${type} alert-dismissible fade show" role="alert">`,
+            `   <div>${message}</div>`,
+            '   <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>',
+            '</div>'
+        ].join('');
+
+        alertPlaceholder.append(wrapper);
+
+        setTimeout(() => {
+            bootstrap.Alert.getInstance(wrapper.querySelector('.alert'))?.close();
+        }, 5000);
     }
 }
 

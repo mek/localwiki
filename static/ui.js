@@ -16,23 +16,11 @@ export class WikiUI {
         });
         // Event delegation for search results
         document.getElementById('searchResults').addEventListener('click', (e) => {
-            const result = e.target.closest('.search-result');
+            const result = e.target.closest('a'); // Changed from .search-result to a
             if (result) {
                 e.preventDefault();
                 this.app.loadPage(result.textContent);
             }
         });
-    }
-
-    showStatus(message, type = 'success') {
-        // ...existing code for status messages...
-        // This can be moved from app.js
-    }
-
-    // Add ARIA attributes and accessibility improvements here
-    enhanceAccessibility() {
-        document.getElementById('searchInput').setAttribute('aria-label', 'Search pages');
-        document.getElementById('newPageName').setAttribute('aria-label', 'New page title');
-        // Add more ARIA attributes as needed
     }
 }
