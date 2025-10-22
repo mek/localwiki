@@ -53,13 +53,14 @@ class WikiApp {
             // Mode containers
             viewMode: document.getElementById('viewMode'),
             editMode: document.getElementById('editMode'),
-            
+
             // View mode elements
             viewPageTitle: document.getElementById('viewPageTitle'),
             viewPageMeta: document.getElementById('viewPageMeta'),
             viewContent: document.getElementById('viewContent'),
             editBtn: document.getElementById('editBtn'),
-            
+            versionsBtn: document.getElementById('versionsBtn'),
+
             // Edit mode elements
             editPageTitle: document.getElementById('editPageTitle'),
             editPageMeta: document.getElementById('editPageMeta'),
@@ -68,14 +69,14 @@ class WikiApp {
             previewPanel: document.getElementById('previewPanel'),
             editor: document.getElementById('editor'),
             preview: document.getElementById('preview'),
-            
+
             // Edit mode buttons
             editorOnlyBtn: document.getElementById('editorOnlyBtn'),
             previewOnlyBtn: document.getElementById('previewOnlyBtn'),
             splitViewBtn: document.getElementById('splitViewBtn'),
             saveBtn: document.getElementById('saveBtn'),
             cancelBtn: document.getElementById('cancelBtn'),
-            
+
             // Common elements
             deleteBtn: document.getElementById('deleteBtn'),
             pageList: document.getElementById('pageList'),
@@ -83,21 +84,26 @@ class WikiApp {
             createPageBtn: document.getElementById('createPageBtn'),
             searchInput: document.getElementById('searchInput'),
             searchResults: document.getElementById('searchResults'),
-            
+
             // Modal
             modal: document.getElementById('modal'),
             modalTitle: document.getElementById('modalTitle'),
             modalMessage: document.getElementById('modalMessage'),
             modalConfirm: document.getElementById('modalConfirm'),
             modalCancel: document.getElementById('modalCancel'),
-            statusMessageContainer: document.getElementById('statusMessageContainer')
+            statusMessageContainer: document.getElementById('statusMessageContainer'),
+
+            // Versions modal
+            versionsModal: document.getElementById('versionsModal'),
+            versionsList: document.getElementById('versionsList')
         };
     }
 
     setupEventListeners() {
         // View mode
         this.elements.editBtn.addEventListener('click', () => this.enterEditMode());
-        
+        this.elements.versionsBtn.addEventListener('click', () => this.showVersionHistory());
+
         // Edit mode
         this.elements.saveBtn.addEventListener('click', () => this.saveAndExitEdit());
         this.elements.cancelBtn.addEventListener('click', () => this.cancelAndExitEdit());
@@ -352,17 +358,17 @@ class WikiApp {
     async updatePreview() {
         if (!this.isEditMode) return;
         if (this.editDisplayMode === 'editor-only') return;
-    
+
         const content = this.elements.editor.value;
         const isDac = /<<[^>]+>>=/m.test(content) && /^\s*@\s*$/m.test(content);
-        
+
         if (isDac) {
-            this.elements.preview.innerHTML = 
+            this.elements.preview.innerHTML =
                 `<div class="dac-preview-notice">
                     <strong>📝 DAC Format Detected</strong>
                     <p>Save the page to see the weaved output.</p>
                 </div>
-                <pre><code class="language-plaintext">${this.escapeHtml(content)}</code></pre>`;
+                <pre><code class="language-plaintext">${escapeHtml(content)}</code></pre>`;
             this.elements.preview.querySelectorAll('pre code').forEach((block) => {
                 hljs.highlightElement(block);
             });
@@ -371,7 +377,7 @@ class WikiApp {
             let html = marked.parse(processed);
             html = this.processWikiLinks(html);
             this.elements.preview.innerHTML = html;
-            
+
             this.elements.preview.querySelectorAll('pre code').forEach((block) => {
                 hljs.highlightElement(block);
             });
@@ -512,8 +518,17 @@ class WikiApp {
         return text.replace(/\[\[([^\]]+)\]\]/g, (match, pageName) => {
             const exists = this.pages.some(p => p.title === pageName);
             const className = exists ? 'wiki-link' : 'wiki-link broken';
-            return `<a href="#" onclick="app.loadPage('${this.escapeHtml(pageName)}')" class="${className}">${this.escapeHtml(pageName)}</a>`;
+            return `<a href="#" onclick="app.loadPage('${escapeHtml(pageName)}')" class="${className}">${escapeHtml(pageName)}</a>`;
         });
+    }
+
+    escapeHtml(unsafe) {
+        return unsafe
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
     }
 
     processFootnotes(text) {
@@ -570,41 +585,97 @@ class WikiApp {
         this.elements.saveBtn.classList.add('btn-success');
     }
 
-    // Status messages are now handled by WikiUI
+    async showVersionHistory() {
+        if (!this.currentPage || !this.currentPage.title) return;
 
-    escapeHtml(text) {
-        const div = document.createElement('div');
-        div.textContent = text;
-        return div.innerHTML;
+        // Show modal
+        const modal = new bootstrap.Modal(this.elements.versionsModal);
+        modal.show();
+
+        // Load versions
+        this.elements.versionsList.innerHTML = '<div class="text-center text-muted">Loading versions...</div>';
+
+        try {
+            const versions = await this.api.getPageVersions(this.currentPage.title);
+
+            if (!versions || versions.length === 0) {
+                this.elements.versionsList.innerHTML = '<div class="text-center text-muted">No previous versions found.</div>';
+                return;
+            }
+
+            // Display current version
+            let html = `
+                <div class="list-group-item list-group-item-action active">
+                    <div class="d-flex w-100 justify-content-between">
+                        <h6 class="mb-1">Current Version</h6>
+                        <small>${new Date(this.currentPage.updated_at).toLocaleString()}</small>
+                    </div>
+                    <div class="btn-group mt-2" role="group">
+                        <button class="btn btn-sm btn-outline-primary" disabled>Viewing</button>
+                    </div>
+                </div>
+            `;
+
+            // Display previous versions
+            versions.forEach((version, index) => {
+                const date = new Date(version.created_at).toLocaleString();
+                html += `
+                    <div class="list-group-item list-group-item-action">
+                        <div class="d-flex w-100 justify-content-between">
+                            <h6 class="mb-1">Version ${versions.length - index}</h6>
+                            <small>${date}</small>
+                        </div>
+                        <div class="btn-group mt-2" role="group">
+                            <button class="btn btn-sm btn-primary" onclick="app.loadVersion(${version.id})">View</button>
+                            <button class="btn btn-sm btn-secondary" onclick="app.compareWithCurrent(${version.id})">Compare</button>
+                        </div>
+                    </div>
+                `;
+            });
+
+            this.elements.versionsList.innerHTML = html;
+        } catch (error) {
+            this.elements.versionsList.innerHTML = `<div class="alert alert-danger">Error loading versions: ${error.message}</div>`;
+        }
     }
 
-    showStatus(message, type = 'success') {
-        const alertPlaceholder = document.getElementById('statusMessageContainer');
-        if (!alertPlaceholder) {
-            const body = document.querySelector('body');
-            const div = document.createElement('div');
-            div.id = 'statusMessageContainer';
-            div.style.position = 'fixed';
-            div.style.top = '20px';
-            div.style.right = '20px';
-            div.style.zIndex = '1050';
-            body.appendChild(div);
-            alertPlaceholder = div;
+    async loadVersion(versionId) {
+        if (!this.currentPage || !this.currentPage.title) return;
+
+        try {
+            const versionPage = await this.api.getPage(this.currentPage.title, versionId);
+            this.currentPage = versionPage;
+            this.updatePageInfo(versionPage);
+            this.updateView();
+
+            // Close modal
+            const modal = bootstrap.Modal.getInstance(this.elements.versionsModal);
+            if (modal) modal.hide();
+
+            this.ui.showStatus('Loaded historical version', 'info');
+        } catch (error) {
+            this.ui.showStatus(`Error loading version: ${error.message}`, 'error');
         }
+    }
 
-        const wrapper = document.createElement('div');
-        wrapper.innerHTML = [
-            `<div class="alert alert-${type} alert-dismissible fade show" role="alert">`,
-            `   <div>${message}</div>`,
-            '   <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>',
-            '</div>'
-        ].join('');
+    async compareWithCurrent(versionId) {
+        // Get current page ID
+        const currentPageId = this.currentPage.id;
 
-        alertPlaceholder.append(wrapper);
+        try {
+            const diff = await this.api.diffVersions(versionId, currentPageId);
 
-        setTimeout(() => {
-            bootstrap.Alert.getInstance(wrapper.querySelector('.alert'))?.close();
-        }, 5000);
+            // Close versions modal
+            const modal = bootstrap.Modal.getInstance(this.elements.versionsModal);
+            if (modal) modal.hide();
+
+            // Show diff in a new modal (simplified - just show both versions for now)
+            alert(`Comparison:\n\nOlder Version:\n${diff.version1.content.substring(0, 200)}...\n\nCurrent:\n${diff.version2.content.substring(0, 200)}...`);
+
+            this.ui.showStatus('Diff feature coming soon - for now showing basic comparison', 'info');
+        } catch (error) {
+            this.ui.showStatus(`Error comparing versions: ${error.message}`, 'error');
+        }
     }
 }
 

@@ -39,6 +39,7 @@ docker-build: ## Build Docker image
 	docker build -t wiki:latest .
 
 docker-run: ## Run application in Docker
+	docker compose build --no-cache
 	docker-compose up -d
 
 docker-stop: ## Stop Docker containers

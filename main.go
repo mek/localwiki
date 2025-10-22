@@ -34,6 +34,15 @@ type Page struct {
 	UpdatedAt time.Time `json:"updated_at"` // Last update timestamp
 }
 
+// PageVersion represents a historical version of a wiki page.
+type PageVersion struct {
+	ID        int       `json:"id"`         // Unique version ID
+	PageID    int       `json:"page_id"`    // ID of the page
+	Title     string    `json:"title"`      // Page title at this version
+	Content   string    `json:"content"`    // Content at this version
+	CreatedAt time.Time `json:"created_at"` // When this version was created
+}
+
 const HomePageTitle = "Home"
 
 // WikiServer handles HTTP requests and database operations for the wiki.
@@ -50,7 +59,6 @@ func isDacFormat(content string) bool {
 
 // renderDac - shells out to run dac for weaving
 func (s *WikiServer) renderDac(dacSource string) (string, error) {
-
 	// create a temp file for the DAC source
 	tmpfile, err := os.CreateTemp("", "dac-*.dac")
 	if err != nil {
@@ -73,7 +81,6 @@ func (s *WikiServer) renderDac(dacSource string) (string, error) {
 }
 
 func (s *WikiServer) handleWeavePage(w http.ResponseWriter, r *http.Request) {
-
 	s.enableCORS(w, r)
 
 	vars := mux.Vars(r)
@@ -106,10 +113,9 @@ func (s *WikiServer) handleWeavePage(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Write([]byte(rendered))
-
 }
-func (s *WikiServer) tangleChunk(dacSource, chunkName string) (string, error) {
 
+func (s *WikiServer) tangleChunk(dacSource, chunkName string) (string, error) {
 	// create a temp file for the DAC source
 	tmpfile, err := os.CreateTemp("", "dac-*.dac")
 	if err != nil {
@@ -219,7 +225,7 @@ func validatePageTitle(title string) string {
 // NewWikiServer initializes the WikiServer, database, and seeds default data if needed.
 func NewWikiServer() (*WikiServer, error) {
 	// Ensure data directory exists
-	if err := os.MkdirAll("./data", 0755); err != nil {
+	if err := os.MkdirAll("./data", 0o755); err != nil {
 		return nil, fmt.Errorf("failed to create data directory: %w", err)
 	}
 
@@ -277,7 +283,7 @@ func (s *WikiServer) seedDefaultData() {
 func (s *WikiServer) enableCORS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 }
 
 // handleOptions responds to CORS preflight requests.
@@ -319,18 +325,34 @@ func (s *WikiServer) getAllPages(w http.ResponseWriter, r *http.Request) {
 }
 
 // getPage returns the full content of a specific wiki page.
+// Supports optional version_id query parameter to retrieve a specific version.
 // Responds with a JSON Page object.
 func (s *WikiServer) getPage(w http.ResponseWriter, r *http.Request) {
 	s.enableCORS(w, r)
 
 	vars := mux.Vars(r)
 	title := vars["title"]
+	versionID := r.URL.Query().Get("version_id")
 
 	var page Page
-	err := s.db.QueryRow(
-		"SELECT id, title, content, created_at, updated_at FROM pages WHERE title = ?",
-		title,
-	).Scan(&page.ID, &page.Title, &page.Content, &page.CreatedAt, &page.UpdatedAt)
+	var err error
+
+	if versionID != "" {
+		// Fetch specific version - return page_id not version id
+		err = s.db.QueryRow(
+			`SELECT p.id, pv.title, pv.content, pv.created_at, pv.created_at
+			FROM page_versions pv
+			JOIN pages p ON pv.page_id = p.id
+			WHERE p.title = ? AND pv.id = ?`,
+			title, versionID,
+		).Scan(&page.ID, &page.Title, &page.Content, &page.CreatedAt, &page.UpdatedAt)
+	} else {
+		// Fetch current version
+		err = s.db.QueryRow(
+			"SELECT id, title, content, created_at, updated_at FROM pages WHERE title = ?",
+			title,
+		).Scan(&page.ID, &page.Title, &page.Content, &page.CreatedAt, &page.UpdatedAt)
+	}
 
 	if err == sql.ErrNoRows {
 		s.writeJSONError(w, "Page not found", http.StatusNotFound)
@@ -353,6 +375,53 @@ func (s *WikiServer) getPage(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+// getPageVersions returns all versions of a specific wiki page.
+// Responds with a JSON array of PageVersion objects.
+func (s *WikiServer) getPageVersions(w http.ResponseWriter, r *http.Request) {
+	s.enableCORS(w, r)
+
+	vars := mux.Vars(r)
+	title := vars["title"]
+
+	// First get the page ID
+	var pageID int
+	err := s.db.QueryRow("SELECT id FROM pages WHERE title = ?", title).Scan(&pageID)
+	if err == sql.ErrNoRows {
+		s.writeJSONError(w, "Page not found", http.StatusNotFound)
+		return
+	} else if err != nil {
+		s.writeJSONError(w, "Failed to fetch page", http.StatusInternalServerError)
+		return
+	}
+
+	// Get all versions for this page
+	rows, err := s.db.Query(
+		`SELECT id, page_id, title, content, created_at
+		FROM page_versions
+		WHERE page_id = ?
+		ORDER BY created_at DESC`,
+		pageID,
+	)
+	if err != nil {
+		s.writeJSONError(w, "Failed to fetch versions", http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var versions []PageVersion
+	for rows.Next() {
+		var version PageVersion
+		err := rows.Scan(&version.ID, &version.PageID, &version.Title, &version.Content, &version.CreatedAt)
+		if err != nil {
+			continue
+		}
+		versions = append(versions, version)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(versions)
 }
 
 // createPage creates a new wiki page from JSON request body.
@@ -494,6 +563,57 @@ func (s *WikiServer) searchPages(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(pages)
 }
 
+// diffVersions compares two page versions and returns the differences.
+// Responds with JSON containing both versions and basic diff info.
+func (s *WikiServer) diffVersions(w http.ResponseWriter, r *http.Request) {
+	s.enableCORS(w, r)
+
+	vars := mux.Vars(r)
+	id1 := vars["id1"]
+	id2 := vars["id2"]
+
+	// Fetch first version
+	var version1 PageVersion
+	err := s.db.QueryRow(
+		`SELECT id, page_id, title, content, created_at
+		FROM page_versions WHERE id = ?`,
+		id1,
+	).Scan(&version1.ID, &version1.PageID, &version1.Title, &version1.Content, &version1.CreatedAt)
+
+	if err == sql.ErrNoRows {
+		s.writeJSONError(w, "First version not found", http.StatusNotFound)
+		return
+	} else if err != nil {
+		s.writeJSONError(w, "Failed to fetch first version", http.StatusInternalServerError)
+		return
+	}
+
+	// Fetch second version
+	var version2 PageVersion
+	err = s.db.QueryRow(
+		`SELECT id, page_id, title, content, created_at
+		FROM page_versions WHERE id = ?`,
+		id2,
+	).Scan(&version2.ID, &version2.PageID, &version2.Title, &version2.Content, &version2.CreatedAt)
+
+	if err == sql.ErrNoRows {
+		s.writeJSONError(w, "Second version not found", http.StatusNotFound)
+		return
+	} else if err != nil {
+		s.writeJSONError(w, "Failed to fetch second version", http.StatusInternalServerError)
+		return
+	}
+
+	// Return both versions for client-side diff
+	response := map[string]interface{}{
+		"version1": version1,
+		"version2": version2,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
 // writeJSONError writes a standardized JSON error response for API handlers.
 func (s *WikiServer) writeJSONError(w http.ResponseWriter, message string, status int) {
 	w.Header().Set("Content-Type", "application/json")
@@ -518,17 +638,19 @@ func main() {
 
 	// API routes - must be registered first and more specific
 	api := r.PathPrefix("/api").Subrouter()
+
+	// All routes are now public (no authentication)
 	api.HandleFunc("/pages", server.getAllPages).Methods("GET")
-	api.HandleFunc("/pages", server.createPage).Methods("POST")
 	api.HandleFunc("/pages/search", server.searchPages).Methods("GET")
 	api.HandleFunc("/pages/{title}", server.getPage).Methods("GET")
-	api.HandleFunc("/pages/{title}", server.updatePage).Methods("PUT")
-	api.HandleFunc("/pages/{title}", server.deletePage).Methods("DELETE")
-
-	// Dac-specific endpoints
+	api.HandleFunc("/pages/{title}/versions", server.getPageVersions).Methods("GET")
 	api.HandleFunc("/pages/{title}/raw", server.handleRawPage).Methods("GET")
 	api.HandleFunc("/pages/{title}/weave", server.handleWeavePage).Methods("GET")
 	api.HandleFunc("/pages/{title}/tangle/{chunk}", server.handleTangleChunk).Methods("GET")
+	api.HandleFunc("/diff/{id1}/{id2}", server.diffVersions).Methods("GET")
+	api.HandleFunc("/pages", server.createPage).Methods("POST")
+	api.HandleFunc("/pages/{title}", server.updatePage).Methods("PUT")
+	api.HandleFunc("/pages/{title}", server.deletePage).Methods("DELETE")
 
 	// Handle preflight requests
 	api.HandleFunc("/pages", server.handleOptions).Methods("OPTIONS")

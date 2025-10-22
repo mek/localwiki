@@ -5,12 +5,14 @@ class WikiAPI {
     }
 
     async request(endpoint, options = {}) {
+        const headers = {
+            'Content-Type': 'application/json',
+            ...options.headers
+        };
+
         try {
             const response = await fetch(`${this.base}${endpoint}`, {
-                headers: {
-                    'Content-Type': 'application/json',
-                    ...options.headers
-                },
+                headers,
                 ...options
             });
             if (!response.ok) {
@@ -44,7 +46,15 @@ class WikiAPI {
     }
 
     getPages() { return this.request('/pages'); }
-    getPage(title) { return this.request(`/pages/${encodeURIComponent(title)}`); }
+    getPage(title, versionId = null) {
+        const url = versionId
+            ? `/pages/${encodeURIComponent(title)}?version_id=${versionId}`
+            : `/pages/${encodeURIComponent(title)}`;
+        return this.request(url);
+    }
+    getPageVersions(title) {
+        return this.request(`/pages/${encodeURIComponent(title)}/versions`);
+    }
     createPage(title, content) {
         return this.request('/pages', {
             method: 'POST',
@@ -65,7 +75,11 @@ class WikiAPI {
     searchPages(query) {
         return this.request(`/pages/search?q=${encodeURIComponent(query)}`);
     }
-	  getRaw(title) {
+    diffVersions(id1, id2) {
+        return this.request(`/diff/${id1}/${id2}`);
+    }
+
+	getRaw(title) {
 			return fetch(`${this.base}/pages/${encodeURIComponent(title)}/raw`)
 				.then(response => response.text())
 				.catch(error => {
@@ -95,7 +109,6 @@ class WikiAPI {
 					throw error;
 				});
 		}
-
 }
 
 export const wikiAPI = new WikiAPI();

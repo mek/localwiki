@@ -57,6 +57,7 @@
                         <div class="page-meta text-muted" id="viewPageMeta"></div>
                         <div class="article-actions">
                             <button id="editBtn" class="btn btn-primary" title="Edit page (Ctrl/Cmd+E)">✏️ Edit</button>
+                            <button id="versionsBtn" class="btn btn-secondary" title="View version history">📜 History</button>
                             <button id="deleteBtn" class="btn btn-danger" style="display: none;" title="Delete page">Delete</button>
                             <button id="helpBtn" class="btn btn-info" title="Keyboard shortcuts">?</button>
                         </div>
@@ -128,6 +129,23 @@
                 <div class="modal-footer">
                     <button id="modalCancel" type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                     <button id="modalConfirm" type="button" class="btn btn-danger">Confirm</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Version History Modal -->
+    <div class="modal fade" id="versionsModal" tabindex="-1" aria-labelledby="versionsModalTitle" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="versionsModalTitle">Version History</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="versionsList" class="list-group">
+                        <div class="text-center text-muted">Loading versions...</div>
+                    </div>
                 </div>
             </div>
         </div>
